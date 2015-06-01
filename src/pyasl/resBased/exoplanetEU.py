@@ -3,18 +3,20 @@ from PyAstronomy.pyaC import pyaErrors as PE
 import os
 import urllib2
 import gzip
-import csv
 import numpy as np
+import pandas as pd
+import csv
+
 
 class ExoplanetEU(pp.PyAUpdateCycle):
   """
     Provides access to exoplanet.eu data base.
-    
+
     This class downloads the data base as a csv
     file and converts it into a numpy recarray.
     By default, the data are re-downloaded
     every 7 days.
-    
+
     The available columns are:
     
     ============  ==============================  ======
@@ -58,9 +60,9 @@ class ExoplanetEU(pp.PyAUpdateCycle):
         If True, no re-download of the data
         will be initiated no matter how old
         they are.
-    
+
   """
-  
+
   def _download(self):
     """
       Download data.
@@ -68,7 +70,7 @@ class ExoplanetEU(pp.PyAUpdateCycle):
     response = urllib2.urlopen("http://exoplanet.eu/catalog/csv")
     data = response.read()
     self._fs.requestFile(self.dataFileName, 'w', gzip.open).write(data)
-  
+
   def _readData(self):
     """
     """
@@ -108,11 +110,25 @@ class ExoplanetEU(pp.PyAUpdateCycle):
       PE.warn(PE.PyAAlgorithmFailure("Not all columns could be filled with data. The following columns must not be used: " + ", ".join(colnotfilled), \
                                      where="ExoplanetEU", \
                                      solution="The format of the data base must be checked. Please consider issuing a bug report via github."))
+    if self._usepandas:
+      # Read the data structure into a pandas DataFrame
+      self.data = pd.read_csv(self._fs.requestFile(self.dataFileName, 'r', gzip.open))
+      # Remove # from the keys, and trailing whitespaces
+      for key in self.data.keys():
+          if '#' in key:
+              self.data.rename(columns={key: key.replace('#', '')}, inplace=True)
+              key = key.replace('#', '')
+          if ' ' in key:
+              # Replace whitespaces inside names with underscore, otherwise strip it
+              if not key.startswith(' ') or not key.endswith(' '):
+                  self.data.rename(columns={key: key.replace(' ', '_')}, inplace=True)
+              else:
+                  self.data.rename(columns={key: key.strip(' ')}, inplace=True)
 
   def availableColumns(self):
     """
       Show a summary of the available columns.
-      
+
       Returns
       -------
       Column names : list of strings
@@ -127,12 +143,12 @@ class ExoplanetEU(pp.PyAUpdateCycle):
       cols.append(v[0])
     print "-"*51
     return cols
-    
-  
+
+
   def getAllData(self):
     """
       Provides all data as a numpy recarray.
-      
+
       Returns
       -------
       Data : numpy recarray
@@ -146,12 +162,12 @@ class ExoplanetEU(pp.PyAUpdateCycle):
   def forceUpdate(self):
     """
       Force a fresh download of the data.
-      
+
       By default, the data will be updated every
-      7 days. 
+      7 days.
     """
     self._update(self._download)
-  
+
   def __init__(self, skipUpdate=False):
     configFilename = os.path.join("pyasl", "resBased", "epeu.cfg")
     pp.PyAUpdateCycle.__init__(self, configFilename, "ExoUpdate")
@@ -159,6 +175,8 @@ class ExoplanetEU(pp.PyAUpdateCycle):
     self._fs = pp.PyAFS()
     if self.needsUpdate() and (not skipUpdate):
       self._update(self._download)
+
+    self._usepandas = False
 
     # Define internal column names and data types
     self._columns = {}
@@ -202,3 +220,4 @@ class ExoplanetEU(pp.PyAUpdateCycle):
                    "star_age":"stAge", "star_teff":"stTeff", "orbital_period":"period"}
     
     self._readData()
+
