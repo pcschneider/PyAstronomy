@@ -71,8 +71,9 @@ class ExoplanetEU(pp.PyAUpdateCycle):
     data = response.read()
     self._fs.requestFile(self.dataFileName, 'w', gzip.open).write(data)
 
-  def _readData(self):
+  def _readDataRA(self):
     """
+      Read data into recarray
     """
     # Determine number of planets in the csv file
     r = csv.DictReader(self._fs.requestFile(self.dataFileName, 'r', gzip.open), delimiter=',')
@@ -110,20 +111,24 @@ class ExoplanetEU(pp.PyAUpdateCycle):
       PE.warn(PE.PyAAlgorithmFailure("Not all columns could be filled with data. The following columns must not be used: " + ", ".join(colnotfilled), \
                                      where="ExoplanetEU", \
                                      solution="The format of the data base must be checked. Please consider issuing a bug report via github."))
-    if self._usepandas:
-      # Read the data structure into a pandas DataFrame
-      self.data = pd.read_csv(self._fs.requestFile(self.dataFileName, 'r', gzip.open))
-      # Remove # from the keys, and trailing whitespaces
-      for key in self.data.keys():
-          if '#' in key:
-              self.data.rename(columns={key: key.replace('#', '')}, inplace=True)
-              key = key.replace('#', '')
-          if ' ' in key:
-              # Replace whitespaces inside names with underscore, otherwise strip it
-              if not key.startswith(' ') or not key.endswith(' '):
-                  self.data.rename(columns={key: key.replace(' ', '_')}, inplace=True)
-              else:
-                  self.data.rename(columns={key: key.strip(' ')}, inplace=True)
+  
+  def _readDataPandas(self):
+    """
+      Read data into pandas structure
+    """
+    # Read the data structure into a pandas DataFrame
+    self.data = pd.read_csv(self._fs.requestFile(self.dataFileName, 'r', gzip.open))
+    # Remove # from the keys, and trailing whitespaces
+    for key in self.data.keys():
+        if '#' in key:
+            self.data.rename(columns={key: key.replace('#', '')}, inplace=True)
+            key = key.replace('#', '')
+        if ' ' in key:
+            # Replace whitespaces inside names with underscore, otherwise strip it
+            if not key.startswith(' ') or not key.endswith(' '):
+                self.data.rename(columns={key: key.replace(' ', '_')}, inplace=True)
+            else:
+                self.data.rename(columns={key: key.strip(' ')}, inplace=True)
 
   def availableColumns(self):
     """
@@ -168,7 +173,7 @@ class ExoplanetEU(pp.PyAUpdateCycle):
     """
     self._update(self._download)
 
-  def __init__(self, skipUpdate=False):
+  def __init__(self, skipUpdate=False, usePandas=False):
     configFilename = os.path.join("pyasl", "resBased", "epeu.cfg")
     pp.PyAUpdateCycle.__init__(self, configFilename, "ExoUpdate")
     self.dataFileName = os.path.join("pyasl", "resBased", "epeu.csv.gz")
@@ -176,7 +181,12 @@ class ExoplanetEU(pp.PyAUpdateCycle):
     if self.needsUpdate() and (not skipUpdate):
       self._update(self._download)
 
-    self._usepandas = False
+    # Determine whether pandas shall be used as DBs
+    self._usePandas = usePandas
+    if not usePandas:
+      self._readData = self._readDataRA
+    else:
+      self._readData = self._readDataPandas
 
     # Define internal column names and data types
     self._columns = {}
