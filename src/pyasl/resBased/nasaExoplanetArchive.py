@@ -6,6 +6,7 @@ import urllib2
 import gzip
 import csv
 import numpy as np
+import pandas as pd
 
 class NasaExoplanetArchive(pp.PyAUpdateCycle):
   """
@@ -61,11 +62,19 @@ class NasaExoplanetArchive(pp.PyAUpdateCycle):
     data = response.read()
     self._fs.requestFile(self.dataFileName, 'w', gzip.open).write(data)
   
-  def __init__(self):
+  def __init__(self, usePandas=False):
     self.data = None
     self.dataFileName = os.path.join("pyasl", "resBased", "NEXA.csv.gz")
     configFileName = os.path.join("pyasl", "resBased", "NEXA.cfg")
     pp.PyAUpdateCycle.__init__(self, configFileName, "NEXA")
+    
+    # Determine whether pandas shall be used as DBs
+    self._usePandas = usePandas
+    if not usePandas:
+      self._readData = self._readDataRA
+    else:
+      self._readData = self._readDataPandas
+    
     # Define columns to select
     # Column name, Description, Unit
     self._columns = {}
@@ -109,7 +118,7 @@ class NasaExoplanetArchive(pp.PyAUpdateCycle):
     """
     self._update(self._downloadData)
       
-  def _readData(self):
+  def _readDataRA(self):
     """
       Read the data from local file into numpy recarray.
     """
@@ -124,6 +133,24 @@ class NasaExoplanetArchive(pp.PyAUpdateCycle):
         if len(v) == 0:
           v = None
         self.data[k][i] = v
+    
+  def _readDataPandas(self):
+    """
+      Read the data from local file into pandas structure.
+    """
+    # Read the data structure into a pandas DataFrame
+    self.data = pd.read_csv(self._fs.requestFile(self.dataFileName, 'r', gzip.open))
+    # Remove # from the keys, and trailing whitespaces
+    for key in self.data.keys():
+        if '#' in key:
+            self.data.rename(columns={key: key.replace('#', '')}, inplace=True)
+            key = key.replace('#', '')
+        if ' ' in key:
+            # Replace whitespaces inside names with underscore, otherwise strip it
+            if not key.startswith(' ') or not key.endswith(' '):
+                self.data.rename(columns={key: key.replace(' ', '_')}, inplace=True)
+            else:
+                self.data.rename(columns={key: key.strip(' ')}, inplace=True)
   
   def availableColumns(self, verbose=True):
     """
